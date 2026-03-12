@@ -1,69 +1,84 @@
 import telebot
 from telebot import types
+import os
 
-# --- SETTINGS ---
-API_TOKEN = '8621463397:AAHILEtpnwNSY8-B5knDQUAfavq8iyk17Ew'
-ADMIN_ID = 7397475374  
-GROUP_ID = 4830250078 
-UPI_ID = "armankhan@ybl" 
+# --- VARIABLES (Railway se connect honge) ---
+API_TOKEN = os.getenv('8621463397:AAHILEtpnwNSY8-B5knDQUAfavq8iyk17Ew')
+ADMIN_ID = int(os.getenv('7397475374'))
+GROUP_ID = os.getenv('-4830250078')
+UPI_ID = os.getenv('aemabkah@ybl')
 
 bot = telebot.TeleBot(API_TOKEN)
 
-# Temporary Database
-pending_payments = {}
-stock = {"100": [], "160": [], "250": []}
+# --- DATABASE (Simple) ---
+prices = {"100": 65, "160": 105, "250": 160}
+pending_users = {}
 
-# --- USER INTERFACE ---
-@bot.message_handler(commands=['start'])
-def start(message):
+# --- MAIN MENU ---
+def main_menu():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("🛒 Buy ₹100 @ ₹65", callback_data="buy_100"),
         types.InlineKeyboardButton("🛒 Buy ₹160 @ ₹105", callback_data="buy_160"),
         types.InlineKeyboardButton("🛒 Buy ₹250 @ ₹160", callback_data="buy_250"),
-        types.InlineKeyboardButton("📞 Support", url="t.me/YourUsername")
+        types.InlineKeyboardButton("📞 Contact Support", url="t.me/your_id") # Apni ID yahan dalo
     )
-    bot.send_message(message.chat.id, "🏆 **WORLD'S BEST REDEEM STORE**\nFlat 35% OFF | Instant Delivery", reply_markup=markup, parse_mode="Markdown")
+    return markup
 
-# --- HANDLING PURCHASE ---
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.send_message(message.chat.id, 
+        "🏆 **WELCOME TO WORLD'S BEST REDEEM STORE**\n\n⚡ Instant Delivery\n💎 35% Flat Discount\n✅ 100% Trusted & Secure", 
+        reply_markup=main_menu(), parse_mode="Markdown")
+
+# --- HANDLING CLICKS ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
 def handle_buy(call):
     val = call.data.split('_')[1]
-    price = {"100": 65, "160": 105, "250": 160}[val]
+    price = prices[val]
+    pending_users[call.message.chat.id] = {"val": val, "price": price}
     
-    pending_payments[call.message.chat.id] = {"val": val, "price": price}
-    
-    msg = f"💳 **Payment Details**\n\nPrice: ₹{price}\nUPI ID: `{UPI_ID}`\n\nPayment karne ke baad **SCREENSHOT** yahan bhejein."
-    bot.send_message(call.message.chat.id, msg, parse_mode="Markdown")
+    msg = f"💳 **PAYMENT DETAILS**\n\nAmount: **₹{price}**\nUPI ID: `{UPI_ID}`\n\nSteps:\n1. UPI ID copy karein aur payment karein.\n2. Payment ka **Screenshot** yahan bhejein."
+    bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-# --- ADMIN VERIFICATION ---
+# --- SCREENSHOT HANDLING ---
 @bot.message_handler(content_types=['photo'])
-def handle_screenshot(message):
-    if message.chat.id in pending_payments:
-        data = pending_payments[message.chat.id]
-        # Admin ko screenshot bhejna
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("✅ Approve", callback_data=f"app_{message.chat.id}"),
-                   types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{message.chat.id}"))
+def handle_payment(message):
+    if message.chat.id in pending_users:
+        data = pending_users[message.chat.id]
         
+        # Admin Panel Buttons
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton("✅ Approve", callback_data=f"app_{message.chat.id}"),
+            types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{message.chat.id}")
+        )
+        
+        # Admin ko alert bhejna
         bot.send_photo(ADMIN_ID, message.photo[-1].file_id, 
-                       caption=f"New Payment!\nUser: @{message.from_user.username}\nAmount: ₹{data['price']}", 
-                       reply_markup=markup)
-        bot.reply_to(message, "⏳ Payment verify ho rahi hai... Admin check kar raha hai.")
+            caption=f"🔔 **NEW ORDER!**\nUser: @{message.from_user.username}\nItem: ₹{data['val']} Code\nPrice: ₹{data['price']}", 
+            reply_markup=markup)
+        
+        bot.reply_to(message, "⏳ **Checking...**\nAdmin aapka payment verify kar raha hai. 2-5 min wait karein.")
 
+# --- ADMIN PANEL LOGIC ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith(('app_', 'rej_')))
 def admin_action(call):
     action, user_id = call.data.split('_')
     user_id = int(user_id)
     
     if action == "app":
-        # Yahan code delivery ka logic aayega (stock se code uthakar)
-        bot.send_message(user_id, "✅ Payment Verified! Ye raha aapka code: `ABCD-1234-EFGH`")
-        bot.send_message(GROUP_ID, f"🔥 **NEW SUCCESS!**\nUser ne ₹{pending_payments[user_id]['val']} ka code kharida! Aap bhi lo @BotUsername")
-        bot.answer_callback_query(call.id, "Approved!")
+        # User ko message
+        bot.send_message(user_id, "✅ **PAYMENT VERIFIED!**\nYe raha aapka code: `ABCD-1234-EFGH` \n\nThanks for buying! ❤️")
+        
+        # Group mein auto-post (Asli King Feature)
+        bot.send_message(GROUP_ID, 
+            f"🎉 **NEW SUCCESSFUL REDEEM!**\n\n👤 User: @User\n💰 Value: ₹{pending_users[user_id]['val']}\n✅ Status: Delivered\n\n🛒 Aap bhi lo: @{bot.get_me().username}", 
+            parse_mode="Markdown")
+        
+        bot.answer_callback_query(call.id, "Order Approved!")
     else:
-        bot.send_message(user_id, "❌ Payment Rejected. Please valid screenshot bhejein.")
-        bot.answer_callback_query(call.id, "Rejected!")
+        bot.send_message(user_id, "❌ **PAYMENT FAILED!**\nAdmin ne aapka screenshot reject kar diya hai. Sahi screenshot bhejein.")
+        bot.answer_callback_query(call.id, "Order Rejected!")
 
 bot.polling()
-    
